@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Vitune Player</title>
+</head>
+<body>
+  <h1>Vitune Mini Player</h1>
+  <form id="searchForm">
+    <input type="text" id="query" placeholder="Search song..." required>
+    <button type="submit">Search</button>
+  </form>
+  <ul id="results"></ul>
+  <audio id="player" controls autoplay style="width:100%; margin-top:20px;"></audio>
+
+  <script>
+    const form = document.getElementById("searchForm");
+    const resultsEl = document.getElementById("results");
+    const player = document.getElementById("player");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const q = document.getElementById("query").value;
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const results = await res.json();
+      resultsEl.innerHTML = "";
+      results.forEach(track => {
+        const li = document.createElement("li");
+        li.textContent = `${track.title} - ${track.artist}`;
+        li.style.cursor = "pointer";
+        li.onclick = () => {
+          player.src = `/api/proxy/${track.videoId}`;
+          player.play();
+        };
+        resultsEl.appendChild(li);
+      });
+    });
+  </script>
+</body>
+</html>
