@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Vitune Mini Player</title>
+  <title>Vitune Player (Android playback)</title>
   <style>
     body { font-family: Arial, Helvetica, sans-serif; margin: 20px; }
     #results li { margin: 8px 0; cursor: pointer; }
@@ -14,12 +14,7 @@
   <h1>Vitune Mini Player</h1>
   <form id="searchForm">
     <input type="text" id="query" placeholder="Search song..." required />
-    <select id="clientSelect">
-      <option value="WEB_REMIX">WEB_REMIX (music.youtube.com)</option>
-      <option value="ANDROID">ANDROID (mobile)</option>
-      <option value="WEB">WEB (web)</option>
-    </select>
-    <button type="submit">Search</button>
+    <button type="submit">Search (WEB_REMIX)</button>
   </form>
 
   <ul id="results"></ul>
@@ -34,7 +29,6 @@
     const resultsEl = document.getElementById('results');
     const player = document.getElementById('player');
     const now = document.getElementById('nowPlaying');
-    const clientSelect = document.getElementById('clientSelect');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -58,9 +52,8 @@
 
     async function playTrack(track) {
       now.textContent = 'Loading: ' + track.title;
-      const client = clientSelect.value;
-      // Use proxy endpoint to avoid CDN denied
-      player.src = '/api/proxy/' + track.videoId + '?client=' + client;
+      // Proxy will use ANDROID client under the hood for playback
+      player.src = '/api/proxy/' + track.videoId;
       player.play().catch(e => console.error(e));
     }
   </script>

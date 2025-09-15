@@ -4,9 +4,9 @@ const { JsDecipher } = require('./jsDecipher');
 const API_KEY = process.env.API_KEY;
 const BASE_URL = 'https://youtubei.googleapis.com/youtubei/v1';
 
-const decipher = new JsDecipher();
+const decipher = new JsDecipher(); // kept as fallback but not used for ANDROID
 
-function getContext(clientName = 'ANDROID') {
+function getContext(clientName = 'WEB_REMIX') {
   const clients = {
     ANDROID: { clientName: 'ANDROID', clientVersion: '19.50.37', platform: 'MOBILE' },
     WEB_REMIX: { clientName: 'WEB_REMIX', clientVersion: '1.20241211.07.00', platform: 'DESKTOP' },
@@ -14,7 +14,7 @@ function getContext(clientName = 'ANDROID') {
     IOS: { clientName: 'IOS', clientVersion: '19.50.7', platform: 'MOBILE' },
     WEB: { clientName: 'WEB', clientVersion: '2.20241211.07.00', platform: 'DESKTOP' }
   };
-  return { client: { ...(clients[clientName] || clients['ANDROID']), hl: 'en', gl: 'US' } };
+  return { client: { ...(clients[clientName] || clients['WEB_REMIX']), hl: 'en', gl: 'US' } };
 }
 
 async function searchTracks(query) {
@@ -52,29 +52,7 @@ async function getTrackMetadata(videoId) {
   return { title: details.title, artist: details.author, duration: parseInt(details.lengthSeconds) || 0, thumbnails: details.thumbnail?.thumbnails || [], description: details.shortDescription || '' };
 }
 
-async function ensureDecipher(videoId, data) {
-  if (decipher.ready) return;
-  // Try from player response
-  let jsUrl = data?.playbackTracking?.atrUrl?.baseUrl || data?.assets?.js || null;
-  if (!jsUrl) {
-    // fallback: fetch watch page
-    const watch = await axios.get(`https://www.youtube.com/watch?v=${videoId}`);
-    const m1 = watch.data.match(/"jsUrl":"([^"]+)"/);
-    const m2 = watch.data.match(/\/s\/player\/[A-Za-z0-9_\-]+\/base\.js/);
-    if (m1) {
-      jsUrl = m1[1];
-    } else if (m2) {
-      jsUrl = m2[0].replace(/\\u0026/g, '&');
-    }
-    if (jsUrl && !jsUrl.startsWith('http')) {
-      jsUrl = 'https://www.youtube.com' + jsUrl;
-    }
-  }
-  if (!jsUrl) throw new Error('No player JS url found');
-  const jsResp = await axios.get(jsUrl);
-  decipher.prepareFromSource(jsResp.data);
-}
-
+// Use ANDROID client for playback to avoid signatureCipher
 async function getStreamingUrls(videoId, clientType = 'ANDROID') {
   const res = await axios.post(
     `${BASE_URL}/player?key=${API_KEY}`,
@@ -92,17 +70,29 @@ async function getStreamingUrls(videoId, clientType = 'ANDROID') {
       if (fmt.url) {
         urls.push({ url: fmt.url, mimeType: fmt.mimeType });
       } else if (fmt.signatureCipher || fmt.cipher) {
+        // fallback: attempt decipher only if necessary
         const raw = fmt.signatureCipher || fmt.cipher;
         const params = new URLSearchParams(raw);
         const url = params.get('url');
         const s = params.get('s');
         const sp = params.get('sp') || 'sig';
-
-        if (!decipher.ready) {
-          await ensureDecipher(videoId, data);
+        if (s) {
+          if (!decipher.ready) {
+            // try to fetch player JS from watch page
+            const watch = await axios.get(`https://www.youtube.com/watch?v=${videoId}`);
+            const m1 = watch.data.match(/"jsUrl":"([^"]+)"/);
+            const m2 = watch.data.match(/\/s\/player\/[A-Za-z0-9_\-]+\/base\.js/);
+            let jsUrl = m1 ? m1[1] : (m2 ? ('https://www.youtube.com' + m2[0]) : null);
+            if (jsUrl) {
+              const jsResp = await axios.get(jsUrl);
+              decipher.prepareFromSource(jsResp.data);
+            }
+          }
+          if (decipher.ready) {
+            const sig = await decipher.decipher(s);
+            urls.push({ url: `${url}&${sp}=${encodeURIComponent(sig)}`, mimeType: fmt.mimeType });
+          }
         }
-        const sig = await decipher.decipher(s);
-        urls.push({ url: `${url}&${sp}=${encodeURIComponent(sig)}`, mimeType: fmt.mimeType });
       }
     }
   }
